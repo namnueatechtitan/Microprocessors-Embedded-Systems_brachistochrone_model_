@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MqttClient } from 'mqtt';
+import { BarChart3 } from 'lucide-react';
 import {
   CartesianGrid,
   Legend,
@@ -15,13 +16,14 @@ import ExperimentStatus from '../components/ExperimentStatus';
 import PredictionCard from '../components/PredictionCard';
 import ScorePanel from '../components/ScorePanel';
 import { createMqttClient, MQTT_TOPIC } from '../mqtt/mqttClient';
-
-type PageKey = 'dashboard' | 'game';
+import type { FeedbackStats } from '../types/feedback';
+import type { PageKey } from '../types/navigation';
 type LaneId = 1 | 2 | 3;
 type GamePhase = 'idle' | 'countdown' | 'running' | 'finished';
 
 interface GamePageProps {
   onNavigate: (page: PageKey) => void;
+  onUpdateFeedback: (updater: (prev: FeedbackStats) => FeedbackStats) => void;
 }
 
 interface LivePoint {
@@ -40,7 +42,7 @@ const laneLabels: Record<LaneId, string> = {
   3: 'Circular Arc',
 };
 
-export default function GamePage({ onNavigate }: GamePageProps) {
+export default function GamePage({ onNavigate, onUpdateFeedback }: GamePageProps) {
   const [mqttConnected, setMqttConnected] = useState(false);
   const [selectedLane, setSelectedLane] = useState<LaneId | null>(null);
   const [locked, setLocked] = useState(false);
@@ -54,6 +56,10 @@ export default function GamePage({ onNavigate }: GamePageProps) {
   });
   const [liveData, setLiveData] = useState<LivePoint[]>([]);
   const [score, setScore] = useState({ points: 0, correct: 0, wrong: 0 });
+  const [preAnswer, setPreAnswer] = useState<'low' | 'medium' | 'high' | null>(null);
+  const [preSubmitted, setPreSubmitted] = useState(false);
+  const [postAnswer, setPostAnswer] = useState<'clear' | 'unsure' | 'confused' | null>(null);
+  const [postSubmitted, setPostSubmitted] = useState(false);
   const clientRef = useRef<MqttClient | null>(null);
   const phaseRef = useRef<GamePhase>(phase);
   const streamStepRef = useRef(1);
@@ -165,6 +171,30 @@ export default function GamePage({ onNavigate }: GamePageProps) {
     }, 1000);
   };
 
+  const submitPreFeedback = () => {
+    if (!preAnswer || preSubmitted) return;
+    onUpdateFeedback((prev) => ({
+      ...prev,
+      preUnderstanding: {
+        ...prev.preUnderstanding,
+        [preAnswer]: prev.preUnderstanding[preAnswer] + 1,
+      },
+    }));
+    setPreSubmitted(true);
+  };
+
+  const submitPostFeedback = () => {
+    if (!postAnswer || postSubmitted || phase !== 'finished') return;
+    onUpdateFeedback((prev) => ({
+      ...prev,
+      postUnderstanding: {
+        ...prev.postUnderstanding,
+        [postAnswer]: prev.postUnderstanding[postAnswer] + 1,
+      },
+    }));
+    setPostSubmitted(true);
+  };
+
   const resultMessage =
     phase === 'finished' && winner && selectedLane
       ? selectedLane === winner
@@ -187,9 +217,92 @@ export default function GamePage({ onNavigate }: GamePageProps) {
                   Choose your prediction before starting the experiment.
                 </p>
               </div>
-              <ScorePanel score={score.points} correct={score.correct} wrong={score.wrong} />
+              <div className="flex items-start gap-3">
+                <button
+                  type="button"
+                  onClick={() => onNavigate('feedback')}
+                  className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-4 py-3 font-semibold text-cyan-300 hover:bg-cyan-500/20"
+                >
+                  <BarChart3 size={18} />
+                  View Feedback Graph
+                </button>
+                <ScorePanel score={score.points} correct={score.correct} wrong={score.wrong} />
+              </div>
             </div>
           </header>
+
+          <section className="grid gap-4 xl:grid-cols-2">
+            <article className="rounded-2xl border border-slate-700/80 bg-slate-900/80 p-5">
+              <h3 className="font-display text-2xl font-bold text-slate-100">Before Playing</h3>
+              <p className="mt-1 text-slate-400">How well do you understand the Brachistochrone concept?</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                {[
+                  { key: 'low', label: 'Low' },
+                  { key: 'medium', label: 'Medium' },
+                  { key: 'high', label: 'High' },
+                ].map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    disabled={preSubmitted}
+                    onClick={() => setPreAnswer(option.key as 'low' | 'medium' | 'high')}
+                    className={`rounded-xl border px-4 py-3 font-semibold transition ${
+                      preAnswer === option.key
+                        ? 'border-blue-400 bg-blue-500/20 text-blue-200'
+                        : 'border-slate-700 bg-slate-800/60 text-slate-200 hover:border-slate-500'
+                    } disabled:cursor-not-allowed disabled:opacity-70`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={submitPreFeedback}
+                disabled={!preAnswer || preSubmitted}
+                className="mt-4 rounded-xl bg-blue-600 px-5 py-2 font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {preSubmitted ? 'Submitted' : 'Submit Pre-Feedback'}
+              </button>
+            </article>
+
+            <article className="rounded-2xl border border-slate-700/80 bg-slate-900/80 p-5">
+              <h3 className="font-display text-2xl font-bold text-slate-100">After Playing</h3>
+              <p className="mt-1 text-slate-400">After finishing, how clear is your understanding now?</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                {[
+                  { key: 'clear', label: 'Clear' },
+                  { key: 'unsure', label: 'Unsure' },
+                  { key: 'confused', label: 'Still Confused' },
+                ].map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    disabled={postSubmitted || phase !== 'finished'}
+                    onClick={() => setPostAnswer(option.key as 'clear' | 'unsure' | 'confused')}
+                    className={`rounded-xl border px-4 py-3 font-semibold transition ${
+                      postAnswer === option.key
+                        ? 'border-emerald-400 bg-emerald-500/20 text-emerald-200'
+                        : 'border-slate-700 bg-slate-800/60 text-slate-200 hover:border-slate-500'
+                    } disabled:cursor-not-allowed disabled:opacity-60`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={submitPostFeedback}
+                disabled={!postAnswer || postSubmitted || phase !== 'finished'}
+                className="mt-4 rounded-xl bg-emerald-600 px-5 py-2 font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {postSubmitted ? 'Submitted' : 'Submit Post-Feedback'}
+              </button>
+              {phase !== 'finished' && (
+                <p className="mt-3 text-xs text-slate-500">Finish the experiment first to submit post-feedback.</p>
+              )}
+            </article>
+          </section>
 
           <section className="rounded-2xl border border-slate-700/80 bg-slate-900/80 p-5">
             <div className="mb-4 flex flex-wrap items-center gap-3">

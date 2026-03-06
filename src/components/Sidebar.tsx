@@ -1,6 +1,5 @@
-import { Gamepad2, LayoutDashboard } from 'lucide-react';
-
-type PageKey = 'dashboard' | 'game';
+import { BarChart3, Gamepad2, LayoutDashboard } from 'lucide-react';
+import type { PageKey } from '../types/navigation';
 
 interface SidebarProps {
   currentRound: number;
@@ -12,6 +11,7 @@ interface SidebarProps {
 const menus = [
   { key: 'dashboard' as PageKey, label: 'Dashboard', icon: LayoutDashboard },
   { key: 'game' as PageKey, label: 'Game', icon: Gamepad2 },
+  { key: 'feedback' as PageKey, label: 'Feedback', icon: BarChart3 },
 ];
 
 export default function Sidebar({ currentRound, totalRounds, activePage, onNavigate }: SidebarProps) {

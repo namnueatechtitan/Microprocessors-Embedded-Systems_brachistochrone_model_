@@ -7,8 +7,7 @@ import TrialHistory from '../components/TrialHistory';
 import RealTimeExperimentChart from '../components/RealTimeExperimentChart';
 import { createMqttClient, MQTT_TOPIC } from '../mqtt/mqttClient';
 import type { ExperimentStatus, LaneId, LaneTimes, TrialRecord } from '../types/dashboard';
-
-type PageKey = 'dashboard' | 'game';
+import type { PageKey } from '../types/navigation';
 
 const TOTAL_ROUNDS = 10;
 const INITIAL_LANE_TIMES: LaneTimes = { 1: null, 2: null, 3: null };
@@ -127,6 +126,13 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
     setHistory([]);
   };
 
+  const statusLabel: Record<ExperimentStatus, string> = {
+    Ready: 'Ready',
+    Running: 'Running',
+    Finished: 'Completed',
+    'Waiting Reset': 'Waiting Reset',
+  };
+
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#1e293b_0,_#020617_40%)] p-4 text-slate-100 lg:p-6">
       <div className="mx-auto flex max-w-[1600px] gap-4">
@@ -155,7 +161,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                     item === status ? 'bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/40' : 'bg-slate-800 text-slate-400'
                   }`}
                 >
-                  {item}
+                  {statusLabel[item]}
                 </span>
               ))}
               <span className={`ml-auto rounded-full px-3 py-1 text-xs font-semibold ${mqttConnected ? 'bg-emerald-500/20 text-emerald-300 animate-pulseglow' : 'bg-rose-500/20 text-rose-300'}`}>
@@ -163,7 +169,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
               </span>
             </div>
             <p className="mt-3 text-lg font-semibold text-blue-300">
-              {status.toUpperCase()} - Round {String(currentRound).padStart(2, '0')} in progress
+              {statusLabel[status].toUpperCase()} - Round {String(currentRound).padStart(2, '0')} in progress
             </p>
           </section>
 
