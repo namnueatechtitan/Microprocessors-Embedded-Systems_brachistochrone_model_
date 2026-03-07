@@ -1,7 +1,11 @@
 import mqtt, { MqttClient } from 'mqtt';
 
-export const MQTT_TOPIC = 'brachistochrone/time';
+export const MQTT_TOPIC        = 'brachistochrone/time';
 export const MQTT_TOPIC_BUNDLE = 'brachistochrone/time';
+export const MQTT_TOPIC_START  = 'brachistochrone/start';
+export const MQTT_TOPIC_RESET  = 'brachistochrone/reset';
+export const MQTT_TOPIC_MODE   = 'brachistochrone/mode';
+export const MQTT_TOPIC_WINNER = 'brachistochrone/winner';
 
 const brokerUrl =
   import.meta.env.VITE_MQTT_BROKER_URL ??

@@ -9,9 +9,8 @@ interface LaneTimes {
 }
 
 interface MqttPayload {
-  lane1?: number;
-  lane2?: number;
-  lane3?: number;
+  lane?: number;
+  time?: number;
 }
 
 const initialTimes: LaneTimes = {
@@ -49,21 +48,16 @@ export default function MQTTListener() {
 
       try {
         const parsed = JSON.parse(text) as MqttPayload;
-        if (
-          typeof parsed.lane1 !== 'number' ||
-          typeof parsed.lane2 !== 'number' ||
-          typeof parsed.lane3 !== 'number'
-        ) {
-          setError('Payload format invalid: expected lane1/lane2/lane3 as numbers');
+        if (![1, 2, 3].includes(Number(parsed.lane)) || typeof parsed.time !== 'number') {
+          setError('Payload format invalid: expected {"lane":1-3,"time":number}');
           return;
         }
 
         setError(null);
-        setTimes({
-          lane1: parsed.lane1,
-          lane2: parsed.lane2,
-          lane3: parsed.lane3,
-        });
+        setTimes((prev) => ({
+          ...prev,
+          [`lane${parsed.lane}`]: parsed.time!,
+        }));
       } catch {
         setError('Payload parse failed: invalid JSON');
       }

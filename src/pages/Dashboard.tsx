@@ -13,9 +13,9 @@ const TOTAL_ROUNDS = 10;
 const INITIAL_LANE_TIMES: LaneTimes = { 1: null, 2: null, 3: null };
 
 const lanes = [
-  { lane: 1 as LaneId, label: 'Cycloid', color: '#2563eb' },
-  { lane: 2 as LaneId, label: 'Straight Line', color: '#64748b' },
-  { lane: 3 as LaneId, label: 'Circular Arc', color: '#06b6d4' },
+  { lane: 1 as LaneId, label: 'Steep', color: '#2563eb' },
+  { lane: 2 as LaneId, label: 'Cycloid', color: '#64748b' },
+  { lane: 3 as LaneId, label: 'Straight Line', color: '#06b6d4' },
 ];
 
 interface DashboardProps {

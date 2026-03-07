@@ -15,7 +15,7 @@ import Sidebar from '../components/Sidebar';
 import ExperimentStatus from '../components/ExperimentStatus';
 import PredictionCard from '../components/PredictionCard';
 import ScorePanel from '../components/ScorePanel';
-import { createMqttClient, MQTT_TOPIC } from '../mqtt/mqttClient';
+import { createMqttClient, MQTT_TOPIC, MQTT_TOPIC_START, MQTT_TOPIC_RESET, MQTT_TOPIC_MODE } from '../mqtt/mqttClient';
 import type { FeedbackStats } from '../types/feedback';
 import type { PageKey } from '../types/navigation';
 type LaneId = 1 | 2 | 3;
@@ -33,13 +33,10 @@ interface LivePoint {
   lane3: number | null;
 }
 
-const PREDICT_TOPIC = 'brachistochrone/game/predict';
-const START_TOPIC = 'brachistochrone/game/start';
-
 const laneLabels: Record<LaneId, string> = {
-  1: 'Cycloid',
-  2: 'Straight Line',
-  3: 'Circular Arc',
+  1: 'Steep',
+  2: 'Cycloid',
+  3: 'Straight Line',
 };
 
 export default function GamePage({ onNavigate, onUpdateFeedback }: GamePageProps) {
@@ -63,9 +60,14 @@ export default function GamePage({ onNavigate, onUpdateFeedback }: GamePageProps
   const clientRef = useRef<MqttClient | null>(null);
   const phaseRef = useRef<GamePhase>(phase);
   const streamStepRef = useRef(1);
+  const selectedLaneRef = useRef<LaneId | null>(null);
 
   useEffect(() => {
     phaseRef.current = phase;
+  }, [phase]);
+
+  useEffect(() => {
+    selectedLaneRef.current = selectedLane;
   }, [phase]);
 
   useEffect(() => {
@@ -75,36 +77,54 @@ export default function GamePage({ onNavigate, onUpdateFeedback }: GamePageProps
     client.on('connect', () => {
       setMqttConnected(true);
       client.subscribe(MQTT_TOPIC);
+      client.subscribe('brachistochrone/winner');
     });
     client.on('reconnect', () => setMqttConnected(false));
     client.on('close', () => setMqttConnected(false));
     client.on('error', () => setMqttConnected(false));
 
     client.on('message', (topic, payload) => {
-      if (topic !== MQTT_TOPIC || phaseRef.current !== 'running') return;
-      try {
-        const data = JSON.parse(payload.toString()) as { lane?: number; time?: number };
-        if (![1, 2, 3].includes(Number(data.lane))) return;
-        if (typeof data.time !== 'number') return;
-        const lane = data.lane as LaneId;
-        const laneTime = data.time;
-        setLaneTimes((prev) => ({ ...prev, [lane]: laneTime }));
-        setLiveData((prev) => {
-          const last = prev[prev.length - 1] ?? { step: 0, lane1: null, lane2: null, lane3: null };
-          const next: LivePoint = {
-            step: streamStepRef.current,
-            lane1: last.lane1,
-            lane2: last.lane2,
-            lane3: last.lane3,
-          };
-          if (lane === 1) next.lane1 = laneTime;
-          if (lane === 2) next.lane2 = laneTime;
-          if (lane === 3) next.lane3 = laneTime;
-          streamStepRef.current += 1;
-          return [...prev.slice(-39), next];
-        });
-      } catch {
-        // Ignore malformed payload.
+      // รับเวลาแต่ละ lane
+      if (topic === MQTT_TOPIC && phaseRef.current === 'running') {
+        try {
+          const data = JSON.parse(payload.toString()) as { lane?: number; time?: number };
+          if (![1, 2, 3].includes(Number(data.lane))) return;
+          if (typeof data.time !== 'number') return;
+          const lane = data.lane as LaneId;
+          const laneTime = data.time;
+          setLaneTimes((prev) => ({ ...prev, [lane]: laneTime }));
+          setLiveData((prev) => {
+            const last = prev[prev.length - 1] ?? { step: 0, lane1: null, lane2: null, lane3: null };
+            const next: LivePoint = {
+              step: streamStepRef.current,
+              lane1: last.lane1,
+              lane2: last.lane2,
+              lane3: last.lane3,
+            };
+            if (lane === 1) next.lane1 = laneTime;
+            if (lane === 2) next.lane2 = laneTime;
+            if (lane === 3) next.lane3 = laneTime;
+            streamStepRef.current += 1;
+            return [...prev.slice(-39), next];
+          });
+        } catch {
+          // Ignore malformed payload.
+        }
+      }
+
+      // รับผู้ชนะจาก ESP32 โดยตรง
+      if (topic === 'brachistochrone/winner' && phaseRef.current === 'running') {
+        const winnerLane = parseInt(payload.toString()) as LaneId;
+        if ([1, 2, 3].includes(winnerLane)) {
+          setProgress(100);
+          setPhase('finished');
+          setScore((prev) => {
+            if (selectedLaneRef.current === winnerLane) {
+              return { points: prev.points + 10, correct: prev.correct + 1, wrong: prev.wrong };
+            }
+            return { points: prev.points, correct: prev.correct, wrong: prev.wrong + 1 };
+          });
+        }
       }
     });
 
@@ -145,7 +165,7 @@ export default function GamePage({ onNavigate, onUpdateFeedback }: GamePageProps
 
   const handleSubmitPrediction = () => {
     if (!selectedLane || locked) return;
-    clientRef.current?.publish(PREDICT_TOPIC, JSON.stringify({ lane: selectedLane, ts: Date.now() }));
+    // บันทึก prediction ไว้ใน state เท่านั้น (ESP32 ไม่มี topic นี้)
     setLocked(true);
   };
 
@@ -157,7 +177,9 @@ export default function GamePage({ onNavigate, onUpdateFeedback }: GamePageProps
     setProgress(0);
     setPhase('countdown');
     setCountdown(3);
-    clientRef.current?.publish(START_TOPIC, JSON.stringify({ start: true, ts: Date.now() }));
+    // ส่ง mode=AUTO ก่อน แล้วค่อย publish start ให้ ESP32
+    clientRef.current?.publish(MQTT_TOPIC_MODE, 'AUTO');
+    clientRef.current?.publish(MQTT_TOPIC_START, '1');
 
     const interval = window.setInterval(() => {
       setCountdown((prev) => {
@@ -354,9 +376,9 @@ export default function GamePage({ onNavigate, onUpdateFeedback }: GamePageProps
                     }}
                   />
                   <Legend />
-                  <Line type="monotone" dataKey="lane1" name="Lane 1 (Cycloid)" stroke="#2563eb" strokeWidth={3} dot={{ r: 2 }} connectNulls />
-                  <Line type="monotone" dataKey="lane2" name="Lane 2 (Straight Line)" stroke="#64748b" strokeWidth={3} dot={{ r: 2 }} connectNulls />
-                  <Line type="monotone" dataKey="lane3" name="Lane 3 (Circular Arc)" stroke="#06b6d4" strokeWidth={3} dot={{ r: 2 }} connectNulls />
+                  <Line type="monotone" dataKey="lane1" name="Lane 1 (Steep)" stroke="#2563eb" strokeWidth={3} dot={{ r: 2 }} connectNulls />
+                  <Line type="monotone" dataKey="lane2" name="Lane 2 (Cycloid)" stroke="#64748b" strokeWidth={3} dot={{ r: 2 }} connectNulls />
+                  <Line type="monotone" dataKey="lane3" name="Lane 3 (Straight Line)" stroke="#06b6d4" strokeWidth={3} dot={{ r: 2 }} connectNulls />
                 </LineChart>
               </ResponsiveContainer>
             </div>

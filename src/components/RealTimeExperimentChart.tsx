@@ -103,9 +103,9 @@ export default function RealTimeExperimentChart() {
               }}
             />
             <Legend />
-            <Line type="monotone" dataKey="lane1" name="Lane 1 (Cycloid)" stroke="#2563eb" strokeWidth={3} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="lane2" name="Lane 2 (Straight Line)" stroke="#64748b" strokeWidth={3} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="lane3" name="Lane 3 (Circular Arc)" stroke="#06b6d4" strokeWidth={3} dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="lane1" name="Lane 1 (Steep)" stroke="#2563eb" strokeWidth={3} dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="lane2" name="Lane 2 (Cycloid)" stroke="#64748b" strokeWidth={3} dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="lane3" name="Lane 3 (Straight Line)" stroke="#06b6d4" strokeWidth={3} dot={{ r: 3 }} />
           </LineChart>
         </ResponsiveContainer>
       </div>
