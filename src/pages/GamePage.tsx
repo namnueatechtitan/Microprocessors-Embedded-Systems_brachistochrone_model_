@@ -15,7 +15,7 @@ import Sidebar from '../components/Sidebar';
 import ExperimentStatus from '../components/ExperimentStatus';
 import PredictionCard from '../components/PredictionCard';
 import ScorePanel from '../components/ScorePanel';
-import { createMqttClient, MQTT_TOPIC, MQTT_TOPIC_START, MQTT_TOPIC_RESET, MQTT_TOPIC_MODE } from '../mqtt/mqttClient';
+import { createMqttClient, MQTT_TOPIC_RESULT, MQTT_TOPIC_START, MQTT_TOPIC_RESET, MQTT_TOPIC_MODE } from '../mqtt/mqttClient';
 import type { FeedbackStats } from '../types/feedback';
 import type { PageKey } from '../types/navigation';
 type LaneId = 1 | 2 | 3;
@@ -76,55 +76,36 @@ export default function GamePage({ onNavigate, onUpdateFeedback }: GamePageProps
 
     client.on('connect', () => {
       setMqttConnected(true);
-      client.subscribe(MQTT_TOPIC);
-      client.subscribe('brachistochrone/winner');
+      client.subscribe(MQTT_TOPIC_RESULT);
     });
     client.on('reconnect', () => setMqttConnected(false));
     client.on('close', () => setMqttConnected(false));
     client.on('error', () => setMqttConnected(false));
 
     client.on('message', (topic, payload) => {
-      // รับเวลาแต่ละ lane
-      if (topic === MQTT_TOPIC && phaseRef.current === 'running') {
-        try {
-          const data = JSON.parse(payload.toString()) as { lane?: number; time?: number };
-          if (![1, 2, 3].includes(Number(data.lane))) return;
-          if (typeof data.time !== 'number') return;
-          const lane = data.lane as LaneId;
-          const laneTime = data.time;
-          setLaneTimes((prev) => ({ ...prev, [lane]: laneTime }));
-          setLiveData((prev) => {
-            const last = prev[prev.length - 1] ?? { step: 0, lane1: null, lane2: null, lane3: null };
-            const next: LivePoint = {
-              step: streamStepRef.current,
-              lane1: last.lane1,
-              lane2: last.lane2,
-              lane3: last.lane3,
-            };
-            if (lane === 1) next.lane1 = laneTime;
-            if (lane === 2) next.lane2 = laneTime;
-            if (lane === 3) next.lane3 = laneTime;
-            streamStepRef.current += 1;
-            return [...prev.slice(-39), next];
-          });
-        } catch {
-          // Ignore malformed payload.
-        }
-      }
+      if (!topic.startsWith('brachistochrone/result') || phaseRef.current !== 'running') return;
+      try {
+        const data = JSON.parse(payload.toString()) as { lane1?: number; lane2?: number; lane3?: number; winner?: number };
+        if (typeof data.lane1 !== 'number' || typeof data.lane2 !== 'number' || typeof data.lane3 !== 'number' || typeof data.winner !== 'number') return;
 
-      // รับผู้ชนะจาก ESP32 โดยตรง
-      if (topic === 'brachistochrone/winner' && phaseRef.current === 'running') {
-        const winnerLane = parseInt(payload.toString()) as LaneId;
-        if ([1, 2, 3].includes(winnerLane)) {
-          setProgress(100);
-          setPhase('finished');
-          setScore((prev) => {
-            if (selectedLaneRef.current === winnerLane) {
-              return { points: prev.points + 10, correct: prev.correct + 1, wrong: prev.wrong };
-            }
-            return { points: prev.points, correct: prev.correct, wrong: prev.wrong + 1 };
-          });
-        }
+        setLaneTimes({ 1: data.lane1, 2: data.lane2, 3: data.lane3 });
+        setLiveData((prev) => {
+          const next = { step: streamStepRef.current, lane1: data.lane1!, lane2: data.lane2!, lane3: data.lane3! };
+          streamStepRef.current += 1;
+          return [...prev.slice(-39), next];
+        });
+
+        const winnerLane = data.winner as LaneId;
+        setProgress(100);
+        setPhase('finished');
+        setScore((prev) => {
+          if (selectedLaneRef.current === winnerLane) {
+            return { points: prev.points + 10, correct: prev.correct + 1, wrong: prev.wrong };
+          }
+          return { points: prev.points, correct: prev.correct, wrong: prev.wrong + 1 };
+        });
+      } catch {
+        // Ignore malformed payload.
       }
     });
 

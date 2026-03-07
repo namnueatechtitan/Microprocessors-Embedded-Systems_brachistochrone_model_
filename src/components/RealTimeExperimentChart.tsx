@@ -10,7 +10,7 @@ import {
   CartesianGrid,
   Legend,
 } from 'recharts';
-import { createMqttClient, MQTT_TOPIC } from '../mqtt/mqttClient';
+import { createMqttClient, MQTT_TOPIC_RESULT } from '../mqtt/mqttClient';
 
 interface ChartPoint {
   trial: number;
@@ -22,8 +22,10 @@ interface ChartPoint {
 type LaneId = 1 | 2 | 3;
 
 interface MqttPayload {
-  lane?: number;
-  time?: number;
+  lane1?: number;
+  lane2?: number;
+  lane3?: number;
+  winner?: number;
 }
 
 const MAX_POINTS = 20;
@@ -32,36 +34,35 @@ export default function RealTimeExperimentChart() {
   const [chartData, setChartData] = useState<ChartPoint[]>([]);
   const [connected, setConnected] = useState(false);
   const trialRef = useRef(1);
-  const pendingRef = useRef<Record<LaneId, number | null>>({ 1: null, 2: null, 3: null });
 
   useEffect(() => {
     const client: MqttClient = createMqttClient();
 
     client.on('connect', () => {
       setConnected(true);
-      client.subscribe(MQTT_TOPIC);
+      client.subscribe(MQTT_TOPIC_RESULT);
     });
     client.on('close', () => setConnected(false));
     client.on('error', () => setConnected(false));
     client.on('reconnect', () => setConnected(false));
 
     client.on('message', (topic, payload) => {
-      if (topic !== MQTT_TOPIC) return;
+      if (!topic.startsWith('brachistochrone/result')) return;
       try {
         const parsed = JSON.parse(payload.toString()) as MqttPayload;
-        if (![1, 2, 3].includes(Number(parsed.lane))) return;
-        if (typeof parsed.time !== 'number') return;
+        if (
+          typeof parsed.lane1 !== 'number' ||
+          typeof parsed.lane2 !== 'number' ||
+          typeof parsed.lane3 !== 'number'
+        ) return;
 
-        const lane = parsed.lane as LaneId;
-        pendingRef.current = { ...pendingRef.current, [lane]: parsed.time };
-
-        const { 1: lane1, 2: lane2, 3: lane3 } = pendingRef.current;
-        if (lane1 == null || lane2 == null || lane3 == null) return;
-
-        const nextPoint: ChartPoint = { trial: trialRef.current, lane1, lane2, lane3 };
+        const nextPoint: ChartPoint = {
+          trial: trialRef.current,
+          lane1: parsed.lane1,
+          lane2: parsed.lane2,
+          lane3: parsed.lane3,
+        };
         trialRef.current += 1;
-        pendingRef.current = { 1: null, 2: null, 3: null };
-
         setChartData((prev) => [...prev.slice(-(MAX_POINTS - 1)), nextPoint]);
       } catch {
         // Ignore malformed MQTT payload.
