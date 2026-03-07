@@ -5,17 +5,16 @@ import LaneCard from '../components/LaneCard';
 import ControlPanel from '../components/ControlPanel';
 import TrialHistory from '../components/TrialHistory';
 import RealTimeExperimentChart from '../components/RealTimeExperimentChart';
-import { createMqttClient, MQTT_TOPIC } from '../mqtt/mqttClient';
+import { createMqttClient, MQTT_TOPIC_RESULT, MQTT_TOPIC_MODE, MQTT_TOPIC_START, MQTT_TOPIC_RESET } from '../mqtt/mqttClient';
 import type { ExperimentStatus, LaneId, LaneTimes, TrialRecord } from '../types/dashboard';
 import type { PageKey } from '../types/navigation';
 
 const TOTAL_ROUNDS = 10;
-const INITIAL_LANE_TIMES: LaneTimes = { 1: null, 2: null, 3: null };
 
 const lanes = [
-  { lane: 1 as LaneId, label: 'Cycloid', color: '#2563eb' },
-  { lane: 2 as LaneId, label: 'Straight Line', color: '#64748b' },
-  { lane: 3 as LaneId, label: 'Circular Arc', color: '#06b6d4' },
+  { lane: 1 as LaneId, label: 'Steep', color: '#2563eb' },
+  { lane: 2 as LaneId, label: 'Cycloid', color: '#64748b' },
+  { lane: 3 as LaneId, label: 'Straight Line', color: '#06b6d4' },
 ];
 
 interface DashboardProps {
@@ -25,21 +24,25 @@ interface DashboardProps {
 export default function Dashboard({ onNavigate }: DashboardProps) {
   const [status, setStatus] = useState<ExperimentStatus>('Ready');
   const [currentRound, setCurrentRound] = useState<number>(1);
-  const [laneTimes, setLaneTimes] = useState<LaneTimes>(INITIAL_LANE_TIMES);
+  const [laneTimes, setLaneTimes] = useState<LaneTimes>({ 1: null, 2: null, 3: null });
   const [history, setHistory] = useState<TrialRecord[]>([]);
   const [mqttConnected, setMqttConnected] = useState(false);
-  const statusRef = useRef<ExperimentStatus>(status);
+  const [mode, setMode] = useState<'MANUAL' | 'AUTO'>('MANUAL');
+  const [lastWinner, setLastWinner] = useState<LaneId | null>(null);
+  const clientRef = useRef<MqttClient | null>(null);
+  const statusRef = useRef<ExperimentStatus>('Ready');
+  const currentRoundRef = useRef<number>(1);
 
-  useEffect(() => {
-    statusRef.current = status;
-  }, [status]);
+  useEffect(() => { statusRef.current = status; }, [status]);
+  useEffect(() => { currentRoundRef.current = currentRound; }, [currentRound]);
 
   useEffect(() => {
     const client: MqttClient = createMqttClient();
+    clientRef.current = client;
 
     client.on('connect', () => {
       setMqttConnected(true);
-      client.subscribe(MQTT_TOPIC);
+      client.subscribe(MQTT_TOPIC_RESULT);
     });
 
     client.on('reconnect', () => setMqttConnected(false));
@@ -47,23 +50,59 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
     client.on('error', () => setMqttConnected(false));
 
     client.on('message', (topic, payload) => {
-      if (topic !== MQTT_TOPIC || statusRef.current !== 'Running') return;
+      if (!topic.startsWith('brachistochrone/result')) return;
 
       try {
-        const data = JSON.parse(payload.toString()) as { lane?: number; time?: number };
-        if (![1, 2, 3].includes(Number(data.lane))) return;
-        if (typeof data.time !== 'number') return;
+        const data = JSON.parse(payload.toString()) as {
+          lane1?: number;
+          lane2?: number;
+          lane3?: number;
+          winner?: number;
+        };
 
-        const lane = data.lane as LaneId;
-        setLaneTimes((prev) => ({ ...prev, [lane]: data.time }));
+        if (
+          typeof data.lane1 !== 'number' ||
+          typeof data.lane2 !== 'number' ||
+          typeof data.lane3 !== 'number' ||
+          typeof data.winner !== 'number'
+        ) return;
+
+        const winner = data.winner as LaneId;
+
+        // อัปเดต lane times แสดงผล
+        setLaneTimes({ 1: data.lane1, 2: data.lane2, 3: data.lane3 });
+        setLastWinner(winner);
+
+        // บันทึก trial
+        const trialRecord: TrialRecord = {
+          trial: currentRoundRef.current,
+          lane1: data.lane1,
+          lane2: data.lane2,
+          lane3: data.lane3,
+          winner: `Lane ${winner}`,
+          note: winner === 2 ? (currentRoundRef.current === 1 ? 'Matches theory' : 'Consistent') : 'Unexpected outcome',
+        };
+
+        setHistory((h) => [...h, trialRecord]);
+
+        // หน่วงเล็กน้อยก่อน reset laneTimes เพื่อให้ UI แสดงผลทัน
+        setTimeout(() => {
+          setLaneTimes({ 1: null, 2: null, 3: null });
+        }, 3000);
+
+        if (currentRoundRef.current >= TOTAL_ROUNDS) {
+          setStatus('Finished');
+        } else {
+          setCurrentRound((r) => r + 1);
+          currentRoundRef.current += 1;
+          setStatus('Waiting Reset');
+        }
       } catch {
         // Ignore malformed payloads.
       }
     });
 
-    return () => {
-      client.end(true);
-    };
+    return () => { client.end(true); };
   }, []);
 
   const ranks = useMemo(() => {
@@ -72,58 +111,34 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
       const tb = laneTimes[b] ?? Number.POSITIVE_INFINITY;
       return ta - tb;
     });
-
     return order.reduce<Record<LaneId, number>>(
-      (acc, lane, index) => {
-        acc[lane] = index + 1;
-        return acc;
-      },
+      (acc, lane, index) => { acc[lane] = index + 1; return acc; },
       { 1: 1, 2: 2, 3: 3 },
     );
   }, [laneTimes]);
 
-  const winnerLane = useMemo(() => {
-    if (laneTimes[1] == null || laneTimes[2] == null || laneTimes[3] == null) return null;
-    return ([1, 2, 3] as LaneId[]).reduce((best, lane) => ((laneTimes[lane] ?? 99) < (laneTimes[best] ?? 99) ? lane : best), 1 as LaneId);
-  }, [laneTimes]);
-
-  useEffect(() => {
-    if (status !== 'Running') return;
-    if (laneTimes[1] == null || laneTimes[2] == null || laneTimes[3] == null) return;
-
-    const winner = winnerLane ?? 1;
-    const trialRecord: TrialRecord = {
-      trial: currentRound,
-      lane1: laneTimes[1],
-      lane2: laneTimes[2],
-      lane3: laneTimes[3],
-      winner: `Lane ${winner}`,
-      note: winner === 1 ? (currentRound === 1 ? 'Matches theory' : 'Consistent') : 'Unexpected outcome',
-    };
-
-    setHistory((prev) => [...prev, trialRecord]);
-    setLaneTimes(INITIAL_LANE_TIMES);
-
-    if (currentRound >= TOTAL_ROUNDS) {
-      setStatus('Finished');
-      return;
-    }
-
-    setCurrentRound((prev) => prev + 1);
-    setStatus('Waiting Reset');
-  }, [currentRound, laneTimes, status, winnerLane]);
-
   const startExperiment = () => {
     if (status === 'Finished') return;
-    setLaneTimes(INITIAL_LANE_TIMES);
+    setLaneTimes({ 1: null, 2: null, 3: null });
+    setLastWinner(null);
     setStatus('Running');
+    clientRef.current?.publish(MQTT_TOPIC_START, '1');
   };
 
   const resetExperiment = () => {
     setStatus('Ready');
     setCurrentRound(1);
-    setLaneTimes(INITIAL_LANE_TIMES);
+    currentRoundRef.current = 1;
+    setLaneTimes({ 1: null, 2: null, 3: null });
+    setLastWinner(null);
     setHistory([]);
+    clientRef.current?.publish(MQTT_TOPIC_RESET, '1');
+  };
+
+  const toggleMode = () => {
+    const next = mode === 'MANUAL' ? 'AUTO' : 'MANUAL';
+    setMode(next);
+    clientRef.current?.publish(MQTT_TOPIC_MODE, next);
   };
 
   const statusLabel: Record<ExperimentStatus, string> = {
@@ -145,7 +160,6 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                 <h2 className="font-display text-4xl font-bold">Brachistochrone Curve Demonstration</h2>
                 <p className="text-slate-400">Real-time IoT Physics Experiment - MQTT + WebSocket</p>
               </div>
-
               <div className="flex items-center gap-3">
                 <div className="grid h-10 w-10 place-items-center rounded-full bg-blue-600 font-bold">PJ</div>
               </div>
@@ -182,7 +196,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                   label={lane.label}
                   time={laneTimes[lane.lane]}
                   rank={ranks[lane.lane]}
-                  winner={winnerLane === lane.lane}
+                  winner={lastWinner === lane.lane}
                   color={lane.color}
                 />
               ))}
@@ -191,8 +205,10 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
               status={status}
               currentRound={currentRound}
               totalRounds={TOTAL_ROUNDS}
+              mode={mode}
               onStart={startExperiment}
               onReset={resetExperiment}
+              onToggleMode={toggleMode}
             />
           </section>
 

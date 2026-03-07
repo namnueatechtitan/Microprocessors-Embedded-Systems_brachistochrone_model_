@@ -1,14 +1,16 @@
 import mqtt, { MqttClient } from 'mqtt';
 
-export const MQTT_TOPIC = 'brachistochrone/time';
-export const MQTT_TOPIC_BUNDLE = 'brachistochrone/time';
+export const MQTT_TOPIC_RESULT = 'brachistochrone/result';
+export const MQTT_TOPIC_START  = 'brachistochrone/start';
+export const MQTT_TOPIC_RESET  = 'brachistochrone/reset';
+export const MQTT_TOPIC_MODE   = 'brachistochrone/mode';
 
 const brokerUrl =
   import.meta.env.VITE_MQTT_BROKER_URL ??
-  'wss://4c4750b3d9aa4b4e8bce99f411d152e5.s1.eu.hivemq.cloud:8884/mqtt';
+  'wss://b9690b40bb454fe394b7670e6def925d.s1.eu.hivemq.cloud:8884/mqtt';
 
-const username = import.meta.env.VITE_MQTT_USERNAME ?? 'brachio';
-const password = import.meta.env.VITE_MQTT_PASSWORD ?? '';
+const username = import.meta.env.VITE_MQTT_USERNAME ?? 'brachistochrone';
+const password = import.meta.env.VITE_MQTT_PASSWORD ?? 'Pj123456';
 
 export function createMqttClient(): MqttClient {
   return mqtt.connect(brokerUrl, {
