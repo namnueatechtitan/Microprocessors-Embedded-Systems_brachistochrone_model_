@@ -5,7 +5,7 @@ import LaneCard from '../components/LaneCard';
 import ControlPanel from '../components/ControlPanel';
 import TrialHistory from '../components/TrialHistory';
 import RealTimeExperimentChart from '../components/RealTimeExperimentChart';
-import { createMqttClient, MQTT_TOPIC } from '../mqtt/mqttClient';
+import { createMqttClient, MQTT_TOPIC, MQTT_TOPIC_MODE, MQTT_TOPIC_START, MQTT_TOPIC_RESET } from '../mqtt/mqttClient';
 import type { ExperimentStatus, LaneId, LaneTimes, TrialRecord } from '../types/dashboard';
 import type { PageKey } from '../types/navigation';
 
@@ -28,6 +28,8 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
   const [laneTimes, setLaneTimes] = useState<LaneTimes>(INITIAL_LANE_TIMES);
   const [history, setHistory] = useState<TrialRecord[]>([]);
   const [mqttConnected, setMqttConnected] = useState(false);
+  const [mode, setMode] = useState<'MANUAL' | 'AUTO'>('MANUAL');
+  const clientRef = useRef<MqttClient | null>(null);
   const statusRef = useRef<ExperimentStatus>(status);
 
   useEffect(() => {
@@ -36,6 +38,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
 
   useEffect(() => {
     const client: MqttClient = createMqttClient();
+    clientRef.current = client;
 
     client.on('connect', () => {
       setMqttConnected(true);
@@ -117,6 +120,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
     if (status === 'Finished') return;
     setLaneTimes(INITIAL_LANE_TIMES);
     setStatus('Running');
+    clientRef.current?.publish(MQTT_TOPIC_START, '1');
   };
 
   const resetExperiment = () => {
@@ -124,6 +128,13 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
     setCurrentRound(1);
     setLaneTimes(INITIAL_LANE_TIMES);
     setHistory([]);
+    clientRef.current?.publish(MQTT_TOPIC_RESET, '1');
+  };
+
+  const toggleMode = () => {
+    const next = mode === 'MANUAL' ? 'AUTO' : 'MANUAL';
+    setMode(next);
+    clientRef.current?.publish(MQTT_TOPIC_MODE, next);
   };
 
   const statusLabel: Record<ExperimentStatus, string> = {
@@ -191,8 +202,10 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
               status={status}
               currentRound={currentRound}
               totalRounds={TOTAL_ROUNDS}
+              mode={mode}
               onStart={startExperiment}
               onReset={resetExperiment}
+              onToggleMode={toggleMode}
             />
           </section>
 
