@@ -40,22 +40,16 @@ VITE_SIMPLE_MQTT_LISTENER=false   # set true to show raw MQTT debug view only
 
 | Topic | Direction | Description |
 |-------|-----------|-------------|
-| `brachistochrone/time` | ESP32 → Web | Lane time result per message |
-| `brachistochrone/winner` | ESP32 → Web | Winning lane number |
+| `brachistochrone/result` | ESP32 → Web | Single packet with all lane times and winner |
 | `brachistochrone/mode` | Web → ESP32 | Set mode: `MANUAL` or `AUTO` |
 | `brachistochrone/start` | Web → ESP32 | Trigger race start (AUTO mode only) |
 | `brachistochrone/reset` | Web → ESP32 | Reset the race |
 
 ### Payload Examples
 
-**`brachistochrone/time`** (published 3 times per race, once per lane)
+**`brachistochrone/result`** (published once per race)
 ```json
-{ "lane": 1, "time": 1.243 }
-```
-
-**`brachistochrone/winner`**
-```
-1
+{ "lane1": 1.243, "lane2": 0.981, "lane3": 1.456, "winner": 2 }
 ```
 
 **`brachistochrone/mode`**
