@@ -32,9 +32,9 @@ VITE_SIMPLE_MQTT_LISTENER=false   # set true to show raw MQTT debug view only
 
 | Lane | Track Type |
 |------|-----------|
-| Lane 1 | Steep |
-| Lane 2 | Cycloid |
-| Lane 3 | Straight Line |
+| Lane 1 | Straight Line  |
+| Lane 2 | Steep |
+| Lane 3 | Cycloid  |
 
 ## MQTT Topics
 
