@@ -12,9 +12,9 @@ import type { PageKey } from '../types/navigation';
 const TOTAL_ROUNDS = 10;
 
 const lanes = [
-  { lane: 1 as LaneId, label: 'Steep', color: '#2563eb' },
-  { lane: 2 as LaneId, label: 'Cycloid', color: '#64748b' },
-  { lane: 3 as LaneId, label: 'Straight Line', color: '#06b6d4' },
+  { lane: 1 as LaneId, label: 'Straight Line', color: '#2563eb' },
+  { lane: 2 as LaneId, label: 'Steep', color: '#64748b' },
+  { lane: 3 as LaneId, label: 'Cycloid', color: '#06b6d4' },
 ];
 
 interface DashboardProps {
